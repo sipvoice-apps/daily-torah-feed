@@ -3,7 +3,6 @@
 
 Sources
   - Kitzur Shulchan Aruch  : he.wikisource.org, one siman per day, cycling 1..221
-  - Rambam (1 chapter/day) : chabad.org daily study (Sefaria calendar as fallback for the title)
   - CCHF Daily Companion   : cchf.global WordPress REST API, category "Daily Companion"
 
 Every run upserts today's items into docs/items.json (the rolling history), then
@@ -34,7 +33,7 @@ TIMEOUT = 30
 session = requests.Session()
 session.headers.update({"User-Agent": UA, "Accept-Language": "en-US,en;q=0.9,he;q=0.8"})
 
-# Some sites (chabad.org, cchf.global) reject non-browser clients with 403.
+# Some sites (e.g. cchf.global) reject non-browser clients with 403.
 BROWSER_HEADERS = {
     "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                    "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"),
@@ -71,9 +70,8 @@ def siman_for(day: date, cfg: dict) -> int:
     return (int(cfg.get("start_siman", 1)) - 1 + offset) % total + 1
 
 
-def truncate(text: str, limit: int = 400) -> str:
-    text = re.sub(r"\s+", " ", text).strip()
-    return text if len(text) <= limit else text[: limit - 1].rsplit(" ", 1)[0] + "…"
+def squash(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def day_start(day: date, tz: ZoneInfo) -> datetime:
@@ -111,7 +109,7 @@ def fetch_kitzur(day: date, cfg: dict, tz: ZoneInfo) -> list[dict]:
         "title": title,
         "url": url,
         "date_published": day_start(day, tz).isoformat(),
-        "summary": truncate(" ".join(paragraphs)) or f"סימן {heb} ({n} of {cfg.get('total_simanim', 221)})",
+        "summary": squash(" ".join(paragraphs)) or f"סימן {heb} ({n} of {cfg.get('total_simanim', 221)})",
         "content_html": body or f'<p><a href="{url}">{html.escape(title)}</a></p>',
         "language": "he",
     }]
@@ -154,81 +152,13 @@ def parse_kitzur_wikitext(wt: str) -> tuple[str, list[tuple[str, list[str]]]]:
     return subject, seifim
 
 
-# ---------------------------------------------------------------- Rambam
-CHAPTER_RE = re.compile(r"([A-Z][A-Za-z'’\-\. ]{2,60}?\s*-\s*Chapter\s+\d+)")
-
-
-def fetch_rambam(day: date, cfg: dict, tz: ZoneInfo) -> list[dict]:
-    tdate = f"{day.month}/{day.day}/{day.year}"
-    url = f"https://www.chabad.org/dailystudy/rambam.asp?tdate={tdate}&rambamChapters=1"
-    title, summary = "", ""
-    try:
-        r = session.get(url, headers=BROWSER_HEADERS, timeout=TIMEOUT)
-        r.raise_for_status()
-        title, summary = parse_chabad_rambam(r.text)
-    except Exception as e:  # chabad.org sometimes blocks datacenter IPs
-        log(f"  rambam: chabad.org failed ({e}); trying Sefaria calendar")
-    if not title:
-        title = sefaria_rambam_title(day)
-    if not title:
-        raise RuntimeError("could not determine today's Rambam chapter")
-    return [{
-        "id": f"rambam-{day.isoformat()}",
-        "source": "Rambam – 1 Chapter a Day",
-        "title": f"Rambam: {title}",
-        "url": url,
-        "date_published": day_start(day, tz).isoformat(),
-        "summary": summary or f"Today's chapter of Mishneh Torah: {title}",
-        "content_html": (f"<p>{html.escape(summary)}</p>" if summary else "")
-                        + f'<p><a href="{html.escape(url)}">Read {html.escape(title)} on Chabad.org</a></p>',
-        "language": "en",
-    }]
-
-
-def parse_chabad_rambam(page: str) -> tuple[str, str]:
-    soup = BeautifulSoup(page, "html.parser")
-    candidates = []
-    for sel in ["h1", "h2", "meta[property='og:title']", "title"]:
-        for el in soup.select(sel):
-            candidates.append(el.get("content") if el.name == "meta" else el.get_text(" ", strip=True))
-    title = ""
-    for c in candidates:
-        m = CHAPTER_RE.search(c or "")
-        if m:
-            title = re.sub(r"\s+", " ", m.group(1)).strip()
-            break
-    summary = ""
-    for p in soup.find_all(["p", "div"], recursive=True):
-        if p.find(["p", "div"]):
-            continue
-        t = p.get_text(" ", strip=True)
-        if len(t) > 120 and not re.search(r"cookie|subscribe|donat|copyright|©", t, re.I):
-            summary = truncate(t)
-            break
-    return title, summary
-
-
-def sefaria_rambam_title(day: date) -> str:
-    try:
-        r = session.get("https://www.sefaria.org/api/calendars",
-                        params={"year": day.year, "month": day.month, "day": day.day,
-                                "diaspora": 1}, timeout=TIMEOUT)
-        r.raise_for_status()
-        for item in r.json().get("calendar_items", []):
-            if item.get("title", {}).get("en") == "Daily Rambam":
-                return item.get("displayValue", {}).get("en", "")
-    except Exception as e:
-        log(f"  rambam: Sefaria fallback failed ({e})")
-    return ""
-
-
 # ---------------------------------------------------------------- CCHF Daily Companion
 def fetch_cchf(day: date, cfg: dict, tz: ZoneInfo) -> list[dict]:
     r = session.get(
         "https://cchf.global/wp-json/wp/v2/posts",
         params={"categories": cfg.get("category_id", 13), "per_page": cfg.get("posts_per_run", 3),
                 "orderby": "date", "order": "desc",
-                "_fields": "id,date,link,title,excerpt,content"},
+                "_fields": "id,date,link,title,content"},
         headers=BROWSER_HEADERS,
         timeout=TIMEOUT,
     )
@@ -239,15 +169,15 @@ def fetch_cchf(day: date, cfg: dict, tz: ZoneInfo) -> list[dict]:
         if published.date() > day:  # skip scheduled/future-dated posts
             continue
         title = BeautifulSoup(post["title"]["rendered"], "html.parser").get_text().strip()
-        excerpt = BeautifulSoup(post.get("excerpt", {}).get("rendered", ""), "html.parser").get_text(" ", strip=True)
         content = clean_wp_html(post.get("content", {}).get("rendered", ""))
+        full_text = squash(BeautifulSoup(content, "html.parser").get_text(" "))
         items.append({
             "id": f"cchf-{post['id']}",
             "source": "CCHF Daily Companion",
             "title": f"Daily Companion: {title}",
             "url": post["link"],
             "date_published": published.isoformat(),
-            "summary": truncate(excerpt or BeautifulSoup(content, "html.parser").get_text(" ")),
+            "summary": full_text or title,
             "content_html": content or f'<p><a href="{post["link"]}">{html.escape(title)}</a></p>',
             "language": "en",
         })
@@ -311,7 +241,7 @@ def write_index(items: list[dict], cfg: dict, now: datetime) -> None:
         f'<li><span class="src">{html.escape(it["source"])}</span> · '
         f'<time>{it["date_published"][:10]}</time><br>'
         f'<a href="{html.escape(it["url"])}" dir="auto">{html.escape(it["title"])}</a>'
-        f'<p dir="auto">{html.escape(it["summary"])}</p></li>'
+        f'<div class="body" dir="auto">{it["content_html"]}</div></li>'
         for it in items[:30])
     page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -320,7 +250,7 @@ def write_index(items: list[dict], cfg: dict, now: datetime) -> None:
 <link rel="alternate" type="application/feed+json" href="feed.json">
 <style>body{{font:16px/1.5 system-ui,sans-serif;max-width:720px;margin:2rem auto;padding:0 16px;color:#222}}
 li{{margin:0 0 1.25rem;list-style:none}}ul{{padding:0}}.src{{font-size:.8rem;color:#666;text-transform:uppercase}}
-time{{font-size:.8rem;color:#666}}a{{font-weight:600}}p{{margin:.25rem 0;color:#444}}</style></head>
+time{{font-size:.8rem;color:#666}}a{{font-weight:600}}p{{margin:.4rem 0;color:#333}}.body{{margin-top:.25rem}}</style></head>
 <body><h1>{html.escape(cfg['feed_title'])}</h1>
 <p>Subscribe: <a href="feed.xml">RSS</a> · <a href="feed.json">JSON Feed</a> · updated {now:%Y-%m-%d %H:%M %Z}</p>
 <ul>{rows}</ul></body></html>"""
@@ -328,7 +258,7 @@ time{{font-size:.8rem;color:#666}}a{{font-weight:600}}p{{margin:.25rem 0;color:#
 
 
 # ---------------------------------------------------------------- main
-SOURCES = {"kitzur": fetch_kitzur, "rambam": fetch_rambam, "cchf": fetch_cchf}
+SOURCES = {"kitzur": fetch_kitzur, "cchf": fetch_cchf}
 
 
 def main() -> int:
@@ -353,9 +283,12 @@ def main() -> int:
         except Exception as e:
             log(f"{key}: FAILED — {e} (keeping previous items)")
 
+    active = {k for k in SOURCES if cfg.get(k, {}).get("enabled", True)}
     cutoff = now - timedelta(days=int(cfg.get("history_days", 30)))
-    items = [it for it in store.values() if datetime.fromisoformat(it["date_published"]) >= cutoff]
-    order = {"Kitzur Shulchan Aruch": 0, "Rambam – 1 Chapter a Day": 1, "CCHF Daily Companion": 2}
+    items = [it for it in store.values()
+             if it["id"].split("-", 1)[0] in active  # drop items from removed/disabled sources
+             and datetime.fromisoformat(it["date_published"]) >= cutoff]
+    order = {"Kitzur Shulchan Aruch": 0, "CCHF Daily Companion": 1}
     items.sort(key=lambda it: (-datetime.fromisoformat(it["date_published"]).date().toordinal(),
                                order.get(it["source"], 9)))
 
