@@ -1,0 +1,42 @@
+name: Build daily feed
+
+on:
+  schedule:
+    # Every 8 hours (UTC): 00:17, 08:17, 16:17 → about 8:17pm, 4:17am, 12:17pm New York time
+    - cron: "17 */8 * * *"
+  workflow_dispatch: {}   # adds a "Run workflow" button for manual refreshes
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-feed
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Build feed
+        run: python build_feed.py
+
+      - name: Commit updated feed
+        run: |
+          git config user.name  "feed-bot"
+          git config user.email "feed-bot@users.noreply.github.com"
+          git add docs/
+          if git diff --cached --quiet; then
+            echo "No changes."
+          else
+            git commit -m "Update feed $(date -u +'%Y-%m-%d %H:%M UTC')"
+            git push
+          fi
