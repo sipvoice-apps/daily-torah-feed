@@ -1,6 +1,6 @@
 {
   "feed_title": "Daily Learning Feed",
-  "feed_description": "Kitzur Shulchan Aruch (one siman a day), Rambam (one chapter a day), and CCHF Daily Companion.",
+  "feed_description": "Kitzur Shulchan Aruch (one siman a day) and CCHF Daily Companion.",
   "site_url": "https://sipvoice-apps.github.io/daily-torah-feed/",
   "timezone": "America/New_York",
   "history_days": 30,
@@ -9,9 +9,6 @@
     "start_date": "2026-10-27",
     "start_siman": 1,
     "total_simanim": 221
-  },
-  "rambam": {
-    "enabled": true
   },
   "cchf": {
     "enabled": true,
