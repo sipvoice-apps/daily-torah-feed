@@ -1,0 +1,29 @@
+<?xml version='1.0' encoding='utf-8'?>
+<rss xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/" version="2.0">
+  <channel>
+    <title>Daily Learning Feed</title>
+    <link>https://sipvoice-apps.github.io/daily-torah-feed/</link>
+    <description>Kitzur Shulchan Aruch (one siman a day), Rambam (one chapter a day), and CCHF Daily Companion.</description>
+    <atom:link href="https://sipvoice-apps.github.io/daily-torah-feed/feed.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 27 Oct 2026 15:20:37 -0400</lastBuildDate>
+    <ttl>480</ttl>
+    <item>
+      <title>קיצור שולחן ערוך – סימן א – (א)</title>
+      <link>https://he.wikisource.org/wiki/%D7%A7%D7%99%D7%A6%D7%95%D7%A8_%D7%A9%D7%95%D7%9C%D7%97%D7%9F_%D7%A2%D7%A8%D7%95%D7%9A_%D7%90</link>
+      <guid isPermaLink="false">kitzur-2026-10-27</guid>
+      <category>Kitzur Shulchan Aruch</category>
+      <pubDate>Tue, 27 Oct 2026 00:00:00 -0400</pubDate>
+      <description>&lt;&lt; | קיצור שולחן ערוך · סימן א | במהדורה המנוקדת | &gt;&gt; דיני השכמת הבוקר ובו ז סעיפים: א | ב | ג | ד | ה | ו | ז הערות הרב מרדכי אליהו ע"פ מרן השו"ע, בן איש חי וכף החיים</description>
+      <content:encoded>&lt;p dir="rtl"&gt;&amp;lt;&amp;lt; | קיצור שולחן ערוך · סימן א | במהדורה המנוקדת | &amp;gt;&amp;gt;&lt;/p&gt;&lt;p dir="rtl"&gt;דיני השכמת הבוקר ובו ז סעיפים:&lt;/p&gt;&lt;p dir="rtl"&gt;א | ב | ג | ד | ה | ו | ז&lt;/p&gt;&lt;p dir="rtl"&gt;הערות הרב מרדכי אליהו ע&amp;quot;פ מרן השו&amp;quot;ע, בן איש חי וכף החיים&lt;/p&gt;</content:encoded>
+    </item>
+    <item>
+      <title>Rambam: Forbidden Intercourse 8</title>
+      <link>https://www.chabad.org/dailystudy/rambam.asp?tdate=10/27/2026&amp;rambamChapters=1</link>
+      <guid isPermaLink="false">rambam-2026-10-27</guid>
+      <category>Rambam – 1 Chapter a Day</category>
+      <pubDate>Tue, 27 Oct 2026 00:00:00 -0400</pubDate>
+      <description>Today's chapter of Mishneh Torah: Forbidden Intercourse 8</description>
+      <content:encoded>&lt;p&gt;&lt;a href="https://www.chabad.org/dailystudy/rambam.asp?tdate=10/27/2026&amp;amp;rambamChapters=1"&gt;Read Forbidden Intercourse 8 on Chabad.org&lt;/a&gt;&lt;/p&gt;</content:encoded>
+    </item>
+  </channel>
+</rss>
