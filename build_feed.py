@@ -34,6 +34,14 @@ TIMEOUT = 30
 session = requests.Session()
 session.headers.update({"User-Agent": UA, "Accept-Language": "en-US,en;q=0.9,he;q=0.8"})
 
+# Some sites (chabad.org, cchf.global) reject non-browser clients with 403.
+BROWSER_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.8,*/*;q=0.7",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
 
 def log(msg: str) -> None:
     print(msg, file=sys.stderr)
@@ -80,7 +88,7 @@ def fetch_kitzur(day: date, cfg: dict, tz: ZoneInfo) -> list[dict]:
     url = "https://he.wikisource.org/wiki/" + urllib.parse.quote(page.replace(" ", "_"))
     r = session.get(
         "https://he.wikisource.org/w/api.php",
-        params={"action": "parse", "page": page, "prop": "text|displaytitle",
+        params={"action": "parse", "page": page, "prop": "wikitext",
                 "format": "json", "formatversion": "2", "redirects": "1"},
         timeout=TIMEOUT,
     )
@@ -88,11 +96,15 @@ def fetch_kitzur(day: date, cfg: dict, tz: ZoneInfo) -> list[dict]:
     data = r.json()
     if "error" in data:
         raise RuntimeError(data["error"].get("info", "wikisource error"))
-    title_extra, paragraphs = parse_wikisource_html(data["parse"]["text"])
+    subject, seifim = parse_kitzur_wikitext(data["parse"]["wikitext"])
     title = f"קיצור שולחן ערוך – סימן {heb}"
-    if title_extra:
-        title += f" – {title_extra}"
-    body = "".join(f'<p dir="rtl">{html.escape(p)}</p>' for p in paragraphs)
+    if subject:
+        title += f" – {subject}"
+    body = "".join(
+        f'<p dir="rtl"><b>({html.escape(label)})</b> '
+        + "<br>".join(html.escape(line) for line in lines) + "</p>"
+        for label, lines in seifim)
+    paragraphs = [" ".join(lines) for _, lines in seifim]
     return [{
         "id": f"kitzur-{day.isoformat()}",
         "source": "Kitzur Shulchan Aruch",
@@ -105,20 +117,41 @@ def fetch_kitzur(day: date, cfg: dict, tz: ZoneInfo) -> list[dict]:
     }]
 
 
-def parse_wikisource_html(fragment: str) -> tuple[str, list[str]]:
-    soup = BeautifulSoup(fragment, "html.parser")
-    for sel in ["table", ".navbox", ".mw-editsection", "sup.reference", ".reference",
-                "ol.references", ".noprint", "style", "script", ".mw-empty-elt"]:
-        for el in soup.select(sel):
-            el.decompose()
-    # Siman subject: first heading or leading bold text, if present
+SEIF_RE = re.compile(r"^==\s*\(([א-ת]{1,3})\)\s*==\s*$", re.M)
+
+
+def clean_wikitext(s: str) -> str:
+    s = re.sub(r"<!--.*?-->", "", s, flags=re.S)
+    s = re.sub(r"<ref[^>/]*/>", "", s)                          # <ref name=x/>
+    s = re.sub(r"<ref[^>]*>.*?</ref>", "", s, flags=re.S)       # footnotes (הערות)
+    s = re.sub(r"\[\[[^\]|]*\|([^\]]*)\]\]", r"\1", s)          # [[target|label]] -> label
+    s = re.sub(r"\[\[([^\]]*)\]\]", r"\1", s)                   # [[target]] -> target
+    s = re.sub(r"\{\{[^{}]*\}\}", "", s)                        # leftover templates
+    s = re.sub(r"'{2,}", "", s)                                 # bold/italic quotes
+    s = re.sub(r"<[^>]+>", "", s)                               # remaining HTML tags
+    return html.unescape(s)
+
+
+def parse_kitzur_wikitext(wt: str) -> tuple[str, list[tuple[str, list[str]]]]:
+    """Return (siman subject, [(seif label, [lines...]), ...]) from a Kitzur siman page."""
     subject = ""
-    head = soup.find(["h2", "h3", "h4"])
-    if head:
-        subject = head.get_text(" ", strip=True)
-    paragraphs = [p.get_text(" ", strip=True) for p in soup.find_all("p")]
-    paragraphs = [p for p in paragraphs if len(p) > 1]
-    return truncate(subject, 80), paragraphs
+    m = re.search(r"\{\{\s*קיצור שולחן ערוך\s*\|([^{}]*)\}\}", wt)
+    if m:
+        params = [p.strip() for p in m.group(1).split("|")]
+        if len(params) >= 4:
+            subject = clean_wikitext(params[3]).strip()
+    parts = SEIF_RE.split(wt)  # [preamble, label1, text1, label2, text2, ...]
+    seifim = []
+    for label, text in zip(parts[1::2], parts[2::2]):
+        text = re.split(r"^==[^=]", text, maxsplit=1, flags=re.M)[0]  # stop at the next non-seif section
+        lines = []
+        for line in clean_wikitext(text).splitlines():
+            line = re.sub(r"^[*:#;]+\s*", "", line).strip()
+            if line:
+                lines.append(re.sub(r"\s+", " ", line))
+        if lines:
+            seifim.append((label, lines))
+    return subject, seifim
 
 
 # ---------------------------------------------------------------- Rambam
@@ -130,7 +163,7 @@ def fetch_rambam(day: date, cfg: dict, tz: ZoneInfo) -> list[dict]:
     url = f"https://www.chabad.org/dailystudy/rambam.asp?tdate={tdate}&rambamChapters=1"
     title, summary = "", ""
     try:
-        r = session.get(url, timeout=TIMEOUT)
+        r = session.get(url, headers=BROWSER_HEADERS, timeout=TIMEOUT)
         r.raise_for_status()
         title, summary = parse_chabad_rambam(r.text)
     except Exception as e:  # chabad.org sometimes blocks datacenter IPs
@@ -196,6 +229,7 @@ def fetch_cchf(day: date, cfg: dict, tz: ZoneInfo) -> list[dict]:
         params={"categories": cfg.get("category_id", 13), "per_page": cfg.get("posts_per_run", 3),
                 "orderby": "date", "order": "desc",
                 "_fields": "id,date,link,title,excerpt,content"},
+        headers=BROWSER_HEADERS,
         timeout=TIMEOUT,
     )
     r.raise_for_status()
