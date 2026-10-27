@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="he">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Daily Learning – Display</title>
+<!-- Full page reload every 30 min as a safety net (OptiSigns also reloads on its own interval) -->
+<meta http-equiv="refresh" content="1800">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #101826;
+    --panel: #172235;
+    --rule: #2b3a54;
+    --text: #f3ecdc;
+    --muted: #b9ae95;
+    --accent: #d6b25e;
+    --fade: 6vh;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); overflow: hidden; cursor: none; }
+  body { display: flex; flex-direction: column; padding: 2.2vh 2.2vw; gap: 2vh; }
+
+  header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid var(--rule); padding-bottom: 1.2vh; }
+  header .date-he { font-family: "Frank Ruhl Libre", serif; font-size: clamp(22px, 3.4vh, 56px); color: var(--accent); direction: rtl; }
+  header .date-en { font-family: "Source Serif 4", Georgia, serif; font-size: clamp(16px, 2.4vh, 40px); color: var(--muted); }
+
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: 1.15fr 1fr; gap: 2vw; }
+  @media (orientation: portrait) { main { grid-template-columns: 1fr; grid-template-rows: 1.15fr 1fr; gap: 2vh; } }
+
+  .panel { background: var(--panel); border-radius: 1.2vh; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .panel .head { padding: 2vh 2vw 1.4vh; border-bottom: 1px solid var(--rule); }
+  .panel .label { font-family: "Source Serif 4", Georgia, serif; letter-spacing: .14em; text-transform: uppercase; font-size: clamp(12px, 1.6vh, 26px); color: var(--accent); }
+  .panel h2 { font-weight: 600; line-height: 1.2; margin-top: .6vh; font-size: clamp(22px, 3.6vh, 60px); }
+  .viewport { position: relative; flex: 1; min-height: 0; overflow: hidden;
+    -webkit-mask-image: linear-gradient(transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent);
+            mask-image: linear-gradient(transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent); }
+  .scroller { padding: var(--fade) 2vw; will-change: transform; transition: opacity .8s; }
+  .scroller p { margin-bottom: 1.6vh; }
+
+  .he { direction: rtl; text-align: right; font-family: "Frank Ruhl Libre", "David", serif; }
+  .he h2 { font-weight: 700; }
+  .he .scroller { font-size: clamp(20px, 3.3vh, 58px); line-height: 1.6; }
+  .he .scroller b { color: var(--accent); margin-left: .3em; }
+  .he .label { text-align: right; letter-spacing: 0; text-transform: none; font-family: "Frank Ruhl Libre", serif; }
+
+  .en { direction: ltr; font-family: "Source Serif 4", Georgia, serif; }
+  .en .scroller { font-size: clamp(18px, 2.9vh, 50px); line-height: 1.55; }
+  .en .scroller img { display: none; }
+
+  .empty { color: var(--muted); font-style: italic; }
+</style>
+</head>
+<body>
+<header>
+  <div class="date-en" id="date-en"></div>
+  <div class="date-he" id="date-he"></div>
+</header>
+<main>
+  <section class="panel he" id="kitzur">
+    <div class="head"><div class="label">קיצור שולחן ערוך · סימן היום</div><h2 class="title"></h2></div>
+    <div class="viewport"><div class="scroller"></div></div>
+  </section>
+  <section class="panel en" id="cchf">
+    <div class="head"><div class="label">Chofetz Chaim · Daily Companion</div><h2 class="title"></h2></div>
+    <div class="viewport"><div class="scroller"></div></div>
+  </section>
+</main>
+<script>
+(() => {
+  const TZ = "America/New_York";
+  const params = new URLSearchParams(location.search);
+  // Seconds to scroll one screen-height of text; ?speed=60 is slower, ?speed=25 faster.
+  const SECONDS_PER_SCREEN = Number(params.get("speed")) || 40;
+  const PAUSE_MS = (Number(params.get("pause")) || 8) * 1000;  // hold at top and bottom
+  const REFETCH_MS = 15 * 60 * 1000;
+
+  // 16 -> ט״ז, 787 -> תשפ״ז, 5 -> ה׳
+  function gematria(n) {
+    if (!n) return "";
+    const H = ["", "ק", "ר", "ש", "ת"], T = ["", "י", "כ", "ל", "מ", "נ", "ס", "ע", "פ", "צ"], O = ["", "א", "ב", "ג", "ד", "ה", "ו", "ז", "ח", "ט"];
+    let s = "";
+    while (n >= 400) { s += "ת"; n -= 400; }
+    s += H[Math.floor(n / 100)]; n %= 100;
+    if (n === 15) s += "טו"; else if (n === 16) s += "טז"; else s += T[Math.floor(n / 10)] + O[n % 10];
+    return s.length === 1 ? s + "׳" : s.slice(0, -1) + "״" + s.slice(-1);
+  }
+
+  const todayISO = () => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date()); // YYYY-MM-DD
+
+  function renderDates() {
+    const now = new Date();
+    document.getElementById("date-en").textContent = new Intl.DateTimeFormat("en-US",
+      { timeZone: TZ, weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(now);
+    let he = "";
+    try {
+      const parts = new Intl.DateTimeFormat("he-IL-u-ca-hebrew", { timeZone: TZ, day: "numeric", month: "long", year: "numeric" }).formatToParts(now);
+      const get = t => (parts.find(p => p.type === t) || {}).value || "";
+      const month = get("month").replace(/^ב(?=\S)/, "");  // some engines include the ב, some don't
+      he = `${gematria(+get("day"))} ב${month} ${gematria(+get("year") % 1000)}`;
+    } catch (e) {}
+    document.getElementById("date-he").textContent = he;
+  }
+
+  function fill(id, item, emptyText) {
+    const el = document.getElementById(id);
+    el.querySelector(".title").textContent = item ? item.title.replace(/^Daily Companion:\s*/, "").replace(/^קיצור שולחן ערוך\s*–\s*/, "") : "";
+    el.querySelector(".scroller").innerHTML = item ? item.content_html : `<p class="empty">${emptyText}</p>`;
+  }
+
+  // Independent slow auto-scroll per panel: pause at top, glide to bottom, pause, fade back to top.
+  const loops = {};
+  function autoscroll(id) {
+    const vp = document.querySelector(`#${id} .viewport`);
+    const sc = vp.querySelector(".scroller");
+    if (loops[id]) cancelAnimationFrame(loops[id].raf), clearTimeout(loops[id].t);
+    const state = loops[id] = { raf: 0, t: 0 };
+    sc.style.transform = "translateY(0)";
+    const run = () => {
+      const distance = sc.scrollHeight - vp.clientHeight;
+      if (distance <= 2) { state.t = setTimeout(run, 5000); return; }     // fits: nothing to scroll
+      const pxPerMs = vp.clientHeight / (SECONDS_PER_SCREEN * 1000);
+      let y = 0, last = 0;
+      const step = (ts) => {
+        if (!last) last = ts;
+        y = Math.min(distance, y + (ts - last) * pxPerMs); last = ts;
+        sc.style.transform = `translateY(${-y}px)`;
+        if (y < distance) state.raf = requestAnimationFrame(step);
+        else state.t = setTimeout(() => {
+          sc.style.opacity = 0;
+          state.t = setTimeout(() => { sc.style.transform = "translateY(0)"; sc.style.opacity = 1;
+                                       state.t = setTimeout(run, PAUSE_MS); }, 900);
+        }, PAUSE_MS);
+      };
+      state.raf = requestAnimationFrame(step);
+    };
+    state.t = setTimeout(run, PAUSE_MS);
+  }
+
+  let lastKey = "";
+  async function load() {
+    renderDates();
+    try {
+      const res = await fetch(`feed.json?t=${Date.now()}`, { cache: "no-store" });
+      const feed = await res.json();
+      const items = feed.items || [];
+      const today = todayISO();
+      const kitzur = items.find(i => i.id === `kitzur-${today}`) || items.find(i => i.id.startsWith("kitzur-"));
+      const cchf = items.filter(i => i.id.startsWith("cchf-") && i.date_published.slice(0, 10) <= today)
+                        .sort((a, b) => b.date_published.localeCompare(a.date_published))[0];
+      const key = (kitzur && kitzur.id) + "|" + (cchf && cchf.id) + "|" + today;
+      if (key === lastKey) return;            // nothing new: don't interrupt the scroll
+      lastKey = key;
+      fill("kitzur", kitzur, "הסימן של היום יופיע בקרוב");
+      fill("cchf", cchf, "Today's lesson will appear shortly.");
+      await (document.fonts ? document.fonts.ready : Promise.resolve());
+      autoscroll("kitzur"); autoscroll("cchf");
+    } catch (e) {
+      console.error("feed load failed", e);   // keep showing whatever is already on screen
+    }
+  }
+
+  load();
+  setInterval(load, REFETCH_MS);
+  setInterval(renderDates, 60 * 1000);
+})();
+</script>
+</body>
+</html>
